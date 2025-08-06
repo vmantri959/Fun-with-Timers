@@ -23,6 +23,9 @@
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +50,7 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart4;
 
 /* USER CODE BEGIN PV */
-
+static volatile bool response_received = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,7 +101,9 @@ int main(void)
   MX_TIM5_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  uint8_t* hello_world = "My name is Viraj\r\n";
+  char user_prompt[100];
+  sprintf(user_prompt, "\r\nEnter desired duty cycle (0 to 100): ");
+  char user_response[4] = {0};
   HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);        // Start TIM5 PWM output
   HAL_TIM_Base_Start(&htim2);                      // Start TIM1 (master base timer)
   /* USER CODE END 2 */
@@ -107,8 +112,32 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_UART_Transmit(&huart4, hello_world, strlen(hello_world), HAL_MAX_DELAY);
+	  int response_len = 0;
+	  HAL_UART_Transmit(&huart4, (uint8_t*)user_prompt, strlen(user_prompt), HAL_MAX_DELAY);
+	  while(response_len <= 3) {
+		  HAL_UART_Receive_IT(&huart4, (uint8_t*)&(user_response[response_len]), 1);
+		  while(response_received == false) {};
+		  HAL_UART_Transmit(&huart4, (uint8_t*)&(user_response[response_len]), 1, HAL_MAX_DELAY);
+		  response_received = false;
+		  if((user_response[response_len] == '\r') || ((user_response[response_len] == '\n'))) {
+			  user_response[response_len] = 0;
+			  break;
+		  }
+		  response_len++;
+	  }
 
+	  if(response_len > 0) {
+		  int duty_cycle = atoi(user_response);
+		  if((duty_cycle <= 100) && (duty_cycle > 0)) {
+			  sprintf(user_prompt, "\r\nReceived duty cycle %d", duty_cycle);
+			  HAL_UART_Transmit(&huart4, (uint8_t*)user_prompt, strlen(user_prompt), HAL_MAX_DELAY);
+		  }
+		  else {
+			  sprintf(user_prompt, "\r\nReceived invalid duty cycle %d, try again!", duty_cycle);
+			  HAL_UART_Transmit(&huart4, (uint8_t*)user_prompt, strlen(user_prompt), HAL_MAX_DELAY);
+		  }
+	  }
+	  sprintf(user_prompt, "\r\nEnter desired duty cycle (0 to 100): ");
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -365,7 +394,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	if((huart ->Instance) == huart4.Instance) {
+		response_received = true;
+	}
+}
 /* USER CODE END 4 */
 
 /**
